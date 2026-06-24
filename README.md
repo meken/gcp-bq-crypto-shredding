@@ -12,7 +12,7 @@ The main idea of crypto-shredding is to add a specific key for every user in a k
 
 There are two methods of generating the keys on BigQuery, we can use and store raw keys in BigQuery or we use [KMS](https://docs.cloud.google.com/kms/docs/key-management-service) and wrapped keys. Each of these options have their advantages and disadvantages.
 
-In this repository we'll focus on using the raw keys as that's the most cost-effective and practical approach for crypto-shredding. Wrapped keys require involvement of KMS for every encryption and decryption operation; although this works fine for granular operations, it poses some challenges when we need to process large amounts of data in bulk.
+In this repository we'll focus on using the raw keys as that's the most cost-effective and practical approach for crypto-shredding. Wrapped keys require involvement of KMS for every encryption and decryption operation; although this works fine for granular operations, it poses some challenges when we need to process large amounts of data in bulk. This will involve including external processes/functions to handle the encryption/decryption in bulk (which comes with additional costs and complexity). Nevertheless, if you need encryption beyond crypto-shredding (with additional requirements such as detailed auditing, key rotation, adhering to specific compliance frameworks etc.) then KMS with wrapped keys could be an alternative.
 
 ### Setup
 
@@ -144,8 +144,12 @@ WHERE user_id = <target_user_id>;
 
 Once the key is deleted, subsequent decryptions for that user will fail or return `NULL` (since the key is gone), effectively shredding the transactional history's PII data without altering the large `user_transactions` table.
 
-## Considerations
+## Additional Considerations
 
 Although the goal of the encryption in this example is to enable crypto-shredding, if additional security is needed so that the encryption keys are only available to a limited audience, you could apply [Column Level Security](https://docs.cloud.google.com/bigquery/docs/column-level-security-intro) to the `user_key` column in the key registry table. In that case decryption would only be possible if the user/service account is granted the appropriate permissions.
 
 One of the advantages of this approach is also its costs. Generating and storing the keys in BigQuery only results on standard BigQuery storage and processing costs.
+
+## Demo scenario
+
+We have included a sample Terraform script that sets up a few things to demonstrate the approach described in this repository. When you run it, it will create a staging table, populate it with random data and also will create some routines to demonstrate the various steps of the process. Keep in mind that you don't have to use routines, they're provided to show you the queries.

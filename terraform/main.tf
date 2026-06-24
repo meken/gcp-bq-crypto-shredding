@@ -249,7 +249,7 @@ resource "google_bigquery_routine" "lookup_user_transactions" {
 
 # Populate staging table with random but deterministic demo records
 resource "google_bigquery_job" "populate_staging" {
-  job_id   = "job_populate_staging_3"
+  job_id   = "job_populate_staging"
   location = var.location
 
   query {
