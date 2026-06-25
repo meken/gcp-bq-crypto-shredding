@@ -10,9 +10,12 @@ For BigQuery another specific advantage is that this way large partitioned table
 
 The main idea of crypto-shredding is to add a specific key for every user in a key registry table and use that key to encrypt all of the user’s (PII) data. If we need to access the user data, we then use the same key to decrypt it. Once we need to delete the user data, all we need to do is to remove their key from the key registry table.
 
-There are two methods of generating the keys on BigQuery, we can use and store raw keys in BigQuery or we use [KMS](https://docs.cloud.google.com/kms/docs/key-management-service) and wrapped keys. Each of these options have their advantages and disadvantages.
+There are two methods of generating the keys on BigQuery, we can use and store raw keys in BigQuery or we can use [KMS](https://docs.cloud.google.com/kms/docs/key-management-service) and wrapped keys. Each of these options have their advantages and disadvantages.
 
-In this repository we'll focus on using the raw keys as that's the most cost-effective and practical approach for crypto-shredding. Wrapped keys require involvement of KMS for every encryption and decryption operation; although this works fine for granular operations, it poses some challenges when we need to process large amounts of data in bulk. This will involve including external processes/functions to handle the encryption/decryption in bulk (which comes with additional costs and complexity). Nevertheless, if you need encryption beyond crypto-shredding (with additional requirements such as detailed auditing, key rotation, adhering to specific compliance frameworks etc.) then KMS with wrapped keys could be an alternative.
+In this repository we'll focus on using the raw keys as that's the most cost-effective and practical approach for crypto-shredding. Wrapped keys require involvement of KMS for every encryption and decryption operation; although this works fine for granular operations, it poses some challenges when we need to process large amounts of data in bulk. This will involve including external processes/functions to handle the encryption/decryption in bulk (which comes with additional costs and complexity). Nevertheless, if you need encryption beyond crypto-shredding (with additional requirements such as detailed auditing, key rotation, adhering to specific compliance frameworks etc.) then KMS with wrapped keys would be the recommended alternative.
+
+> [!NOTE]  
+> For crypto-shredding to be an effective method, the key deletion has to be irreversible. So, any potential copies, backups or snapshots of the keys table would render this approach useless.
 
 ### Setup
 
