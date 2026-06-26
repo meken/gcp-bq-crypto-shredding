@@ -66,7 +66,7 @@ def health():
 def encrypt_batch():
     """
     BigQuery Remote Function for batch encryption.
-    Expected signature: encrypt_email_remote(wrapped_key BYTES, email STRING, user_id INT64) -> BYTES
+    Expected signature: encrypt_string_remote(wrapped_key BYTES, plaintext STRING, user_id INT64) -> BYTES
     """
     try:
         req_data = request.get_json(silent=True)
@@ -82,10 +82,10 @@ def encrypt_batch():
                 continue
                 
             wrapped_key_base64 = call[0]
-            email = call[1]
+            plaintext = call[1]
             user_id = call[2]
             
-            if not wrapped_key_base64 or email is None or user_id is None:
+            if not wrapped_key_base64 or plaintext is None or user_id is None:
                 replies.append(None)
                 continue
                 
@@ -98,7 +98,7 @@ def encrypt_batch():
                 
                 # 3. Encrypt deterministically using user_id as associated data (AAD)
                 aad = str(user_id).encode("utf-8")
-                ciphertext = primitive.encrypt_deterministically(email.encode("utf-8"), aad)
+                ciphertext = primitive.encrypt_deterministically(plaintext.encode("utf-8"), aad)
                 
                 # 4. Return as base64-encoded string (required for BYTES return type in BQ remote functions)
                 replies.append(base64.b64encode(ciphertext).decode("utf-8"))
@@ -116,7 +116,7 @@ def encrypt_batch():
 def decrypt_batch():
     """
     BigQuery Remote Function for batch decryption.
-    Expected signature: decrypt_email_remote(wrapped_key BYTES, encrypted_email BYTES, user_id INT64) -> STRING
+    Expected signature: decrypt_string_remote(wrapped_key BYTES, ciphertext BYTES, user_id INT64) -> STRING
     """
     try:
         req_data = request.get_json(silent=True)
@@ -132,10 +132,10 @@ def decrypt_batch():
                 continue
                 
             wrapped_key_base64 = call[0]
-            encrypted_email_base64 = call[1]
+            ciphertext_base64 = call[1]
             user_id = call[2]
             
-            if not wrapped_key_base64 or not encrypted_email_base64 or user_id is None:
+            if not wrapped_key_base64 or not ciphertext_base64 or user_id is None:
                 replies.append(None)
                 continue
                 
@@ -148,7 +148,7 @@ def decrypt_batch():
                 
                 # 3. Decrypt deterministically using user_id as associated data (AAD)
                 aad = str(user_id).encode("utf-8")
-                ciphertext = base64.b64decode(encrypted_email_base64)
+                ciphertext = base64.b64decode(ciphertext_base64)
                 decrypted_bytes = primitive.decrypt_deterministically(ciphertext, aad)
                 
                 # 4. Return decrypted string

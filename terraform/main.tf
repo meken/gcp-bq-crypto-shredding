@@ -1,3 +1,7 @@
+# ==============================================================================
+#             BQ SETUP FOR BOTH APPROACHES
+# ==============================================================================
+
 resource "google_bigquery_dataset" "dataset" {
   dataset_id                  = var.dataset_id
   friendly_name               = "Crypto Shredding Demo"
@@ -126,7 +130,9 @@ resource "google_bigquery_table" "staging_transactions" {
 EOF
 }
 
-# --- BigQuery Routines (Stored Procedures) ---
+# ==============================================================================
+#             BQ-RAW KEYS
+# ==============================================================================
 
 # Routine A: Create keysets for any user who doesn't have one
 resource "google_bigquery_routine" "create_keys" {
@@ -279,7 +285,7 @@ resource "random_id" "kms_suffix" {
 # 1. Cloud KMS Keyring
 resource "google_kms_key_ring" "keyring" {
   name     = "crypto-shredding-keyring-${random_id.kms_suffix.hex}"
-  location = var.region
+  location = lower(var.location)
 }
 
 # 2. Cloud KMS CryptoKey (Master Key Encryption Key - KEK)
@@ -319,7 +325,7 @@ data "archive_file" "remote_function_zip" {
 resource "google_cloud_run_v2_service" "remote_function_service" {
   name     = "bq-crypto-shredding-rf"
   location = var.region
-  ingress  = "INGRESS_TRAFFIC_ALL"
+  ingress  = "INGRESS_TRAFFIC_INTERNAL_ONLY"
 
   template {
     service_account = google_service_account.cloud_run_sa.email
@@ -329,7 +335,7 @@ resource "google_cloud_run_v2_service" "remote_function_service" {
 
       env {
         name  = "KMS_KEY_URI"
-        value = "gcp-kms://projects/${var.project_id}/locations/${var.region}/keyRings/${google_kms_key_ring.keyring.name}/cryptoKeys/${google_kms_crypto_key.kek.name}"
+        value = "gcp-kms://projects/${var.project_id}/locations/${lower(var.location)}/keyRings/${google_kms_key_ring.keyring.name}/cryptoKeys/${google_kms_crypto_key.kek.name}"
       }
 
       resources {
@@ -393,10 +399,10 @@ resource "google_cloud_run_v2_service_iam_member" "connection_invoker" {
   member   = "serviceAccount:${google_bigquery_connection.cloud_run_connection.cloud_resource[0].service_account_id}"
 }
 
-# 10. BigQuery Scalar Remote Function: Batch Encryption
-resource "google_bigquery_routine" "encrypt_email_remote" {
+# 10. BigQuery Scalar Remote Function: Generic String Encryption
+resource "google_bigquery_routine" "encrypt_string_remote" {
   dataset_id   = google_bigquery_dataset.dataset.dataset_id
-  routine_id   = "encrypt_email_remote"
+  routine_id   = "encrypt_string_remote"
   routine_type = "SCALAR_FUNCTION"
 
   arguments {
@@ -404,7 +410,7 @@ resource "google_bigquery_routine" "encrypt_email_remote" {
     data_type = jsonencode({ "typeKind" : "BYTES" })
   }
   arguments {
-    name      = "email"
+    name      = "plaintext"
     data_type = jsonencode({ "typeKind" : "STRING" })
   }
   arguments {
@@ -429,10 +435,10 @@ resource "google_bigquery_routine" "encrypt_email_remote" {
   ]
 }
 
-# 11. BigQuery Scalar Remote Function: Batch Decryption
-resource "google_bigquery_routine" "decrypt_email_remote" {
+# 11. BigQuery Scalar Remote Function: Generic String Decryption
+resource "google_bigquery_routine" "decrypt_string_remote" {
   dataset_id   = google_bigquery_dataset.dataset.dataset_id
-  routine_id   = "decrypt_email_remote"
+  routine_id   = "decrypt_string_remote"
   routine_type = "SCALAR_FUNCTION"
 
   arguments {
@@ -440,7 +446,7 @@ resource "google_bigquery_routine" "decrypt_email_remote" {
     data_type = jsonencode({ "typeKind" : "BYTES" })
   }
   arguments {
-    name      = "encrypted_email"
+    name      = "ciphertext"
     data_type = jsonencode({ "typeKind" : "BYTES" })
   }
   arguments {
@@ -481,7 +487,7 @@ resource "google_bigquery_routine" "create_keys_kms" {
         VALUES (
           source.user_id, 
           KEYS.NEW_WRAPPED_KEYSET(
-            'gcp-kms://projects/${var.project_id}/locations/${var.region}/keyRings/${google_kms_key_ring.keyring.name}/cryptoKeys/${google_kms_crypto_key.kek.name}',
+            'gcp-kms://projects/${var.project_id}/locations/${lower(var.location)}/keyRings/${google_kms_key_ring.keyring.name}/cryptoKeys/${google_kms_crypto_key.kek.name}',
             'DETERMINISTIC_AEAD_AES_SIV_CMAC_256'
           )
         );
@@ -518,7 +524,7 @@ resource "google_bigquery_routine" "encrypt_and_insert_kms" {
         s.amount,
         s.currency,
         -- Call our Cloud Run Remote Function to encrypt using the wrapped keyset
-        `${var.project_id}.${google_bigquery_dataset.dataset.dataset_id}.encrypt_email_remote`(k.user_key, s.user_email, s.user_id) AS user_email
+        `${var.project_id}.${google_bigquery_dataset.dataset.dataset_id}.encrypt_string_remote`(k.user_key, s.user_email, s.user_id) AS user_email
       FROM `${var.project_id}.${google_bigquery_dataset.dataset.dataset_id}.staging_transactions` AS s
       JOIN `${var.project_id}.${google_bigquery_dataset.dataset.dataset_id}.user_keys` AS k
       ON s.user_id = k.user_id;
@@ -529,7 +535,7 @@ resource "google_bigquery_routine" "encrypt_and_insert_kms" {
     google_bigquery_table.user_transactions,
     google_bigquery_table.user_keys,
     google_bigquery_table.staging_transactions,
-    google_bigquery_routine.encrypt_email_remote,
+    google_bigquery_routine.encrypt_string_remote,
     google_bigquery_routine.create_keys_kms
   ]
 }
@@ -553,7 +559,7 @@ resource "google_bigquery_routine" "lookup_user_transactions_kms" {
           -- If the key in the registry is deleted, the user has been crypto-shredded
           WHEN k.user_key IS NULL THEN 'DELETED'
           -- Otherwise, invoke the remote function to unwrap keyset and decrypt
-          ELSE `${var.project_id}.${google_bigquery_dataset.dataset.dataset_id}.decrypt_email_remote`(k.user_key, t.user_email, t.user_id)
+          ELSE `${var.project_id}.${google_bigquery_dataset.dataset.dataset_id}.decrypt_string_remote`(k.user_key, t.user_email, t.user_id)
         END AS decrypted_email
       FROM `${var.project_id}.${google_bigquery_dataset.dataset.dataset_id}.user_transactions` AS t
       LEFT JOIN `${var.project_id}.${google_bigquery_dataset.dataset.dataset_id}.user_keys` AS k
@@ -564,7 +570,7 @@ resource "google_bigquery_routine" "lookup_user_transactions_kms" {
   depends_on = [
     google_bigquery_table.user_transactions,
     google_bigquery_table.user_keys,
-    google_bigquery_routine.decrypt_email_remote
+    google_bigquery_routine.decrypt_string_remote
   ]
 }
 
