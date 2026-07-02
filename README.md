@@ -57,7 +57,7 @@ CREATE OR REPLACE TABLE crypto_shredding_demo.user_keys (
 
 ## Raw Keys on BigQuery
 
-When we use the the raw keys in BigQuery, we generate and store keysets directly inside a BigQuery table (`crypto_shredding_demo.user_keys`) as raw `BYTES`. We will use *deterministic encryption* (`DETERMINISTIC_AEAD_AES_SIV_CMAC_256`) because it produces identical ciphertext for the same plaintext and key. This allows us to perform exact matches, `GROUP BY`, and joins on the encrypted columns.
+When we use the the raw keys in BigQuery, we generate and store keysets directly inside a BigQuery table (`crypto_shredding_demo.user_keys`) as raw `BYTES`. We will use *deterministic encryption* (`DETERMINISTIC_AEAD_AES_SIV_CMAC_256`) because it produces identical ciphertext for the same plaintext and key. This allows us to perform exact matches, aggregations and joins on the encrypted columns.
 
 ### Staging Table Schema
 
@@ -151,9 +151,9 @@ Once the key is deleted, subsequent decryptions for that user will fail or retur
 
 ### Additional Considerations
 
-Although the goal of the encryption in this example is to enable crypto-shredding, if additional security is needed so that the encryption keys are only available to a limited audience, you could apply [Column Level Security](https://docs.cloud.google.com/bigquery/docs/column-level-security-intro) to the `user_key` column in the key registry table. In that case decryption would only be possible if the user/service account is granted the appropriate permissions.
+Although the goal of the encryption in this example is to enable crypto-shredding, if additional security is needed so that the encryption keys are only available to a limited audience, you could apply [Column Level Security](https://docs.cloud.google.com/bigquery/docs/column-level-security-intro) to the `user_key` column in the key registry table. In that case decryption would only be possible if the user/service account is granted the appropriate permissions. Alternatively [Authorized Views](https://docs.cloud.google.com/bigquery/docs/authorized-views) could be used to hide keys table completely, given people access to encrypted, unencrypted or partial (non PII columns) data without users being aware of the keys.
 
-One of the advantages of this approach is also its costs. Generating and storing the keys in BigQuery only results on standard BigQuery storage and processing costs.
+Another advantage of this approach is also its costs. Generating and storing the keys in BigQuery only results on standard BigQuery storage and processing costs.
 
 ## KMS and Wrapped Keys
 
